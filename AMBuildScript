@@ -67,9 +67,11 @@ class ExtensionConfig(object):
     if builder.options.sm_path:
       self.sm_root = builder.options.sm_path
     else:
-      self.sm_root = ResolveEnvPath('SOURCEMOD18', 'sourcemod-1.8')
-      if not self.sm_root:
-        self.sm_root = ResolveEnvPath('SOURCEMOD110', 'sourcemod-1.10')
+      for version in ('1.13', '1.12', '1.11', '1.10', '1.9', '1.8', '1.7'):
+        self.sm_root = ResolveEnvPath('SOURCEMOD' + version.replace('.', ''),
+                                      'sourcemod-' + version)
+        if self.sm_root:
+          break
       if not self.sm_root:
         self.sm_root = ResolveEnvPath('SOURCEMOD', 'sourcemod')
       if not self.sm_root:
@@ -267,6 +269,8 @@ class ExtensionConfig(object):
       os.path.join(self.sm_root, 'public'),
       os.path.join(self.sm_root, 'public', 'extensions'),
       os.path.join(self.sm_root, 'sourcepawn', 'include'),
+      # SourceMod 1.7 keeps the VM headers here.
+      os.path.join(self.sm_root, 'public', 'sourcepawn'),
       os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
       os.path.join(self.sm_root, 'public', 'amtl'),
     ]

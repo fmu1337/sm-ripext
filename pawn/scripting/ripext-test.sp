@@ -88,7 +88,7 @@ public void OnPluginStart()
     delete hJSONObject;
 }
 
-void OnHTTPResponse(HTTPResponse response, any value)
+public void OnHTTPResponse(HTTPResponse response, any value)
 {
     if (response.Status != HTTPStatus_OK) {
         PrintToServer("[ERR] %s Status: %d", sHTTPTags[value], response.Status);
@@ -101,7 +101,7 @@ void OnHTTPResponse(HTTPResponse response, any value)
     PrintToServer("[OK] %s Response:\n%s", sHTTPTags[value], sData);
 }
 
-void OnImageDownloaded(HTTPStatus status, any value)
+public void OnImageDownloaded(HTTPStatus status, any value)
 {
     if (status != HTTPStatus_OK) {
         PrintToServer("[ERR] Download Status: %d", status);

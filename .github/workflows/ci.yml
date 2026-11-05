@@ -10,12 +10,22 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-2022]
-        sourcemod-version: [1.12-dev]
+        # SourceMod 1.13 development currently lives on master.
+        sourcemod-version: [1.7-dev, 1.8-dev, 1.9-dev, 1.10-dev, 1.11-dev, 1.12-dev, master]
         include:
-          - os: ubuntu-22.04
+          - sourcemod-version: 1.7-dev
+            target-archs: x86
+          - sourcemod-version: 1.8-dev
+            target-archs: x86
+          - sourcemod-version: 1.9-dev
+            target-archs: x86
+          - sourcemod-version: 1.10-dev
+            target-archs: x86
+          - sourcemod-version: 1.11-dev
             target-archs: x86,x86_64
-
-          - os: windows-2022
+          - sourcemod-version: 1.12-dev
+            target-archs: x86,x86_64
+          - sourcemod-version: master
             target-archs: x86,x86_64
 
     steps:
@@ -67,15 +77,30 @@ jobs:
         run: |
           mkdir build && cd build
           perl ../curl/lib/mk-ca-bundle.pl
-          python ../configure.py --enable-optimize --targets=${{ matrix.target-archs }} \
+          python ../configure.py --sm-path=../../sourcemod --enable-optimize --targets=${{ matrix.target-archs }} \
             ${{ github.ref == 'refs/heads/main' && '--breakpad-dump --symbol-files' || '' }}
           ambuild
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}
+          name: ${{ runner.os }}-${{ matrix.sourcemod-version }}
           path: extension/build/package
+
+      - name: Compile plugin with SourcePawn 1.7
+        if: runner.os == 'Linux' && matrix.sourcemod-version == '1.7-dev'
+        shell: bash
+        run: |
+          mkdir sourcemod-1.7-runtime
+          curl --fail --show-error --location \
+            https://sm.alliedmods.net/smdrop/1.7/sourcemod-1.7.3-git5334-linux.tar.gz \
+            --output sourcemod-1.7-runtime.tar.gz
+          tar -xzf sourcemod-1.7-runtime.tar.gz -C sourcemod-1.7-runtime
+          sourcemod-1.7-runtime/addons/sourcemod/scripting/spcomp \
+            extension/pawn/scripting/ripext-test.sp \
+            -isourcemod-1.7-runtime/addons/sourcemod/scripting/include \
+            -iextension/pawn/scripting/include \
+            -oripext-test.smx
 
 
   release:
@@ -91,8 +116,16 @@ jobs:
       - name: Package
         run: |
           version=`echo $GITHUB_REF | sed "s/refs\/tags\///"`
-          7z a sm-ripext-${version}-linux.zip ./Linux/*
-          7z a sm-ripext-${version}-windows.zip ./Windows/*
+          # Keep the existing packages for older servers. SM 1.13 changes the
+          # SourcePawn/forward ABI, so publish its SDK builds separately.
+          7z a sm-ripext-${version}-linux.zip ./Linux-1.12-dev/*
+          7z a sm-ripext-${version}-windows.zip ./Windows-1.12-dev/*
+          7z a sm-ripext-${version}-sm1.13-linux.zip ./Linux-master/*
+          7z a sm-ripext-${version}-sm1.13-windows.zip ./Windows-master/*
+          for sm_version in 1.7 1.8 1.9 1.10 1.11; do
+            7z a sm-ripext-${version}-sm${sm_version}-linux.zip ./Linux-${sm_version}-dev/*
+            7z a sm-ripext-${version}-sm${sm_version}-windows.zip ./Windows-${sm_version}-dev/*
+          done
 
       - name: Release
         uses: svenstaro/upload-release-action@v2

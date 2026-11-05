@@ -23,6 +23,20 @@
 #include "httpclient.h"
 #include "httprequest.h"
 
+// SM 1.7 predates SourcePawn exception scopes. Preserve its native error state.
+static bool FormatNativeString(char *buffer, size_t maxlength, IPluginContext *context,
+                              const cell_t *params, unsigned int param)
+{
+#if defined(SOURCEPAWN_ENGINE2_API_VERSION) && SOURCEPAWN_ENGINE2_API_VERSION < 0xB
+	smutils->FormatString(buffer, maxlength, context, params, param);
+	return context->GetLastNativeError() == SP_ERROR_NONE;
+#else
+	DetectExceptions eh(context);
+	smutils->FormatString(buffer, maxlength, context, params, param);
+	return !eh.HasException();
+#endif
+}
+
 static HTTPRequest *GetRequestFromHandle(IPluginContext *pContext, Handle_t hndl)
 {
 	HandleError err;
@@ -495,14 +509,9 @@ static cell_t AppendRequestFormParam(IPluginContext *pContext, const cell_t *par
 	}
 
 	char value[8192];
+	if (!FormatNativeString(value, sizeof(value), pContext, params, 3))
 	{
-		DetectExceptions eh(pContext);
-		smutils->FormatString(value, sizeof(value), pContext, params, 3);
-
-		if (eh.HasException())
-		{
-			return 0;
-		}
+		return 0;
 	}
 
 	request->AppendFormParam(name, value);
@@ -527,14 +536,9 @@ static cell_t AppendRequestQueryParam(IPluginContext *pContext, const cell_t *pa
 	}
 
 	char value[8192];
+	if (!FormatNativeString(value, sizeof(value), pContext, params, 3))
 	{
-		DetectExceptions eh(pContext);
-		smutils->FormatString(value, sizeof(value), pContext, params, 3);
-
-		if (eh.HasException())
-		{
-			return 0;
-		}
+		return 0;
 	}
 
 	request->AppendQueryParam(name, value);
@@ -578,14 +582,9 @@ static cell_t SetRequestHeader(IPluginContext *pContext, const cell_t *params)
 	}
 
 	char value[8192];
+	if (!FormatNativeString(value, sizeof(value), pContext, params, 3))
 	{
-		DetectExceptions eh(pContext);
-		smutils->FormatString(value, sizeof(value), pContext, params, 3);
-
-		if (eh.HasException())
-		{
-			return 0;
-		}
+		return 0;
 	}
 
 	request->SetHeader(name, value);
@@ -1018,13 +1017,13 @@ static cell_t GetResponseHeader(IPluginContext *pContext, const cell_t *params)
 		lowercaseName[i] = tolower(lowercaseName[i]);
 	}
 
-	HTTPHeaderMap::Result header = response->headers.find(lowercaseName.c_str());
-	if (!header.found())
+	auto header = response->headers.find(lowercaseName);
+	if (header == response->headers.end())
 	{
 		return 0;
 	}
 
-	pContext->StringToLocalUTF8(params[3], params[4], header->value.c_str(), NULL);
+	pContext->StringToLocalUTF8(params[3], params[4], header->second.c_str(), NULL);
 
 	return 1;
 }
