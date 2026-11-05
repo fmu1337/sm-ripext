@@ -10,13 +10,23 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-2022]
-        # SourceMod 1.13 development lives on master.
-        sourcemod-version: [master]
+        # SourceMod 1.13 development currently lives on master.
+        sourcemod-version: [1.7-dev, 1.8-dev, 1.9-dev, 1.10-dev, 1.11-dev, 1.12-dev, master]
         include:
-          - os: ubuntu-22.04
+          - sourcemod-version: 1.7-dev
+            target-archs: x86
+          - sourcemod-version: 1.8-dev
+            target-archs: x86
+          - sourcemod-version: 1.9-dev
+            target-archs: x86
+          # Use this SDK for the x64 binary shared by SM 1.11-1.12.
+          - sourcemod-version: 1.10-dev
             target-archs: x86,x86_64
-
-          - os: windows-2022
+          - sourcemod-version: 1.11-dev
+            target-archs: x86,x86_64
+          - sourcemod-version: 1.12-dev
+            target-archs: x86,x86_64
+          - sourcemod-version: master
             target-archs: x86,x86_64
 
     steps:
@@ -77,28 +87,71 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}
+          name: ${{ runner.os }}-${{ matrix.sourcemod-version }}
           path: extension/build/package
 
+      - name: Compile plugin with SourcePawn 1.7
+        if: runner.os == 'Linux' && matrix.sourcemod-version == '1.7-dev'
+        shell: bash
+        run: |
+          mkdir sourcemod-1.7-runtime
+          curl --fail --show-error --location \
+            https://sm.alliedmods.net/smdrop/1.7/sourcemod-1.7.3-git5334-linux.tar.gz \
+            --output sourcemod-1.7-runtime.tar.gz
+          tar -xzf sourcemod-1.7-runtime.tar.gz -C sourcemod-1.7-runtime
+          sourcemod-1.7-runtime/addons/sourcemod/scripting/spcomp \
+            extension/pawn/scripting/ripext-test.sp \
+            -isourcemod-1.7-runtime/addons/sourcemod/scripting/include \
+            -iextension/pawn/scripting/include \
+            -oripext-test.smx
+
+
+  package:
+    name: Package release archives
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test release packager
+        run: python -m unittest discover -s tools -p test_package_release.py
+      - name: Download builds
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Package
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="$GITHUB_REF_NAME"
+          else
+            version="build-${GITHUB_SHA:0:7}"
+          fi
+          python tools/package_release.py --artifacts artifacts --output release --version "$version"
+      - name: Upload release archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: release/*.zip
+          if-no-files-found: error
 
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: package
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
-      - name: Download artifacts
+      - name: Download release archives
         uses: actions/download-artifact@v4
-
-      - name: Package
-        run: |
-          version=`echo $GITHUB_REF | sed "s/refs\/tags\///"`
-          7z a sm-ripext-${version}-linux.zip ./Linux/*
-          7z a sm-ripext-${version}-windows.zip ./Windows/*
-
+        with:
+          name: release-packages
+          path: release
       - name: Release
         uses: svenstaro/upload-release-action@v2
         with:
-          file: '*.zip'
+          file: 'release/*.zip'
           file_glob: true
